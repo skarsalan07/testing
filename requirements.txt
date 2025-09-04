@@ -2,6 +2,7 @@ fastapi
 uvicorn
 transformers
 huggingface-hub
-torch==2.3.0+cpu
-torchaudio==2.3.0+cpu
+torch
+torchaudio
 -f https://download.pytorch.org/whl/torch_stable.html
+
