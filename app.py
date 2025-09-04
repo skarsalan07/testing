@@ -1,39 +1,38 @@
 from fastapi import FastAPI, UploadFile, File
-from fastapi.middleware.cors import CORSMiddleware
-from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq, pipeline
-import torchaudio
+from transformers import pipeline
 import tempfile
+import logging
 
-# Load model + processor directly from Hugging Face
-MODEL_ID = "Arsalan07/whisper-api"
+# Logging for debugging
+logging.basicConfig(level=logging.INFO)
 
-processor = AutoProcessor.from_pretrained(MODEL_ID)
-model = AutoModelForSpeechSeq2Seq.from_pretrained(MODEL_ID)
-pipe = pipeline("automatic-speech-recognition", model=model, tokenizer=processor)
+app = FastAPI(title="Whisper ASR API")
 
-app = FastAPI(title="Whisper API", description="Fine-tuned Whisper ASR API", version="1.0")
+# Load Hugging Face Whisper model
+try:
+    logging.info("Loading model from Hugging Face...")
+    pipe = pipeline("automatic-speech-recognition", model="Arsalan07/whisper-api")
+    logging.info("Model loaded successfully!")
+except Exception as e:
+    logging.error(f"Error loading model: {e}")
+    pipe = None
 
-# Allow CORS (so HR can call API from anywhere)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+@app.get("/")
+def root():
+    return {"message": "✅ Whisper API is running on Render"}
 
-@app.post("/transcribe/")
+@app.post("/transcribe")
 async def transcribe(file: UploadFile = File(...)):
-    """Upload an audio file (.mp3/.wav) and get transcription"""
-    # Save temp file
-    with tempfile.NamedTemporaryFile(delete=False, suffix=file.filename) as tmp:
+    if pipe is None:
+        return {"error": "Model not loaded"}
+    
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
         tmp.write(await file.read())
         tmp_path = tmp.name
-
-    # Load audio
-    speech_array, sampling_rate = torchaudio.load(tmp_path)
-
-    # Run pipeline
-    result = pipe(speech_array.squeeze().numpy(), sampling_rate=sampling_rate)
-
-    return {"transcription": result["text"]}
+    
+    try:
+        result = pipe(tmp_path)
+        return {"text": result["text"]}
+    except Exception as e:
+        logging.error(f"Error during transcription: {e}")
+        return {"error": str(e)}
